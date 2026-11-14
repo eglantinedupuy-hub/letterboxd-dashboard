@@ -1,12 +1,12 @@
 @import "tailwindcss";
 
-/* Letterboxd-inspired dark palette. Change colours here and the whole site follows. */
+/* Letterboxd-inspired slate-grey palette. Change colours here and the whole site follows. */
 @theme {
-  --color-background: #14181c;
-  --color-card: #1c2228;
-  --color-card-hover: #2c3440;
+  --color-background: #242c34; /* slate grey (not black) */
+  --color-card: #2c3440; /* Letterboxd's panel grey */
+  --color-card-hover: #384452;
   --color-foreground: #ffffff;
-  --color-muted: #99aabb;
+  --color-muted: #9ab;
   --color-accent: #ff8000; /* Letterboxd orange: main chart colour */
   --color-liked: #ff6b81; /* hearts */
   --color-star: #00e054; /* Letterboxd green: ratings */
@@ -22,4 +22,13 @@ html {
 body {
   background: var(--color-background);
   color: var(--color-foreground);
+}
+
+@keyframes fade {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
 }

@@ -24,20 +24,25 @@ docs/PLAN.md       # roadmap + checklist
 ```
 
 ## Commands
-- Process export: `python pipeline/process_letterboxd.py --input data/raw --out data/processed`
-- Web: `cd web; npm install` (first time), then `npm run dev -- --hostname 127.0.0.1` → http://127.0.0.1:3000
+- Process export: `python pipeline/process_letterboxd.py --input data/raw --out data/processed --include-reviews`
+- TMDB details: `python pipeline/enrich_tmdb.py` (needs TMDB_API_KEY in .env; cached in data/raw/cache/)
+- Latest diary from RSS: `python pipeline/fetch_rss.py`
+- Web: `cd web; npm install` (first time), then `npm run dev` → http://127.0.0.1:3001 (port 3001; the Spotify dashboard uses 3000)
   (`predev` runs `sync-data` automatically)
 
 ## Data facts (Letterboxd export)
 - `watched.csv`, `ratings.csv`, `likes/films.csv`, `watchlist.csv`, list files and profile favourites use **film** links (boxd.it/xxxx).
 - `diary.csv` and `reviews.csv` use **diary-entry** links — different! Join them to films by (Name, Year).
 - Ratings are 0.5–5 in half steps. Diary `Watched Date` is the date watched; `Date` is when it was logged.
-- The export has **no genres, runtime, directors, posters or countries**. Those need TMDB (see PLAN.md) — don't invent them.
+- The export has **no genres, runtime, directors, posters or countries**. They come from TMDB via `enrich_tmdb.py` → `data/processed/tmdb.json` (keyed by Letterboxd film URL). Pages must still work when tmdb.json is missing.
+- Credit TMDB (and JustWatch for where-to-watch) wherever that data is shown — the footer already does.
 
 ## Hard rules
 1. Never commit `data/raw/`, `.env*` (except `.env.example`), or API keys. Never print keys in logs.
-2. Review text is private unless the owner asks to publish it.
+2. Review text is published on purpose (owner's choice) via `--include-reviews` → `reviews.json`, used by the "From my diary" card. Don't publish anything else from `data/raw/`.
 3. Do not invent APIs or library functions. If unsure, say so and point to the official docs.
 4. Ask before adding dependencies, deleting files, or restructuring folders.
 5. Small steps, one feature at a time. After each change: plain-language summary, how to test, tick `docs/PLAN.md`.
-6. Reuse the existing components (`Card`, `StatCard`, `Stars`, `SimpleBarChart`, `chartTheme.ts`) to keep one consistent look.
+6. Reuse the existing components (`Card`, `StatCard`, `Stars`, `FilmCard`, `SimpleBarChart`, `chartTheme.ts`) to keep one consistent look.
+7. Personal settings (challenge goal, favourites, JustWatch region) live in `web/src/config.ts`.
+8. Don't rebuild what Letterboxd already shows well (full film list, watchlist, lists). Focus on new insights.

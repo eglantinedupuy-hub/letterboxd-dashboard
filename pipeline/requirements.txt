@@ -1,0 +1,4 @@
+# process_letterboxd.py uses only the standard library.
+# enrich_tmdb.py and fetch_rss.py need:
+requests
+python-dotenv

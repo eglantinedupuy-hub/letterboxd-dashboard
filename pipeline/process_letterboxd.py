@@ -10,7 +10,8 @@ Joins:
 - ratings.csv / watched.csv / likes/films.csv / watchlist.csv / profile favourites use FILM links (boxd.it/xxxx)
 - diary.csv / reviews.csv use DIARY-ENTRY links (different!), so they are matched to films by (Name, Year).
 
-Review text is NOT included unless you pass --include-reviews (it stays private by default).
+Review text is NOT included unless you pass --include-reviews (then reviews.json is written and becomes
+public on the website — the dashboard's "random diary entry" card uses it).
 Standard library only.
 """
 
@@ -103,13 +104,10 @@ def build(raw: Path, include_reviews: bool):
             films[k]["logged"].append(d["Watched Date"])
             if d.get("Rewatch"):
                 films[k]["rewatches"] += 1
-    review_text = {}
     for rv in reviews:
         k = key(rv["Name"], rv["Year"])
         if k in films:
             films[k]["has_review"] = True
-            if include_reviews:
-                review_text[k] = rv.get("Review", "")
     for lst in lists:
         for f in lst["films"]:
             k = key(f["name"], f["year"] or "")
@@ -172,9 +170,24 @@ def build(raw: Path, include_reviews: bool):
     for k, f in sorted(films.items(), key=lambda kv: (kv[1]["logged"][-1] if kv[1]["logged"] else "", kv[1]["name"]), reverse=True):
         rec = {"name": f["name"], "year": f["year"], "url": f["url"], "rating": f["rating"], "liked": f["liked"],
                "watched_on": sorted(f["logged"]), "rewatches": f["rewatches"], "has_review": f["has_review"], "lists": f["lists"]}
-        if include_reviews and k in review_text:
-            rec["review"] = review_text[k]
         film_list.append(rec)
+
+    # every dated diary entry (newest first) — used for counts, throwback, calendar
+    film_url = lambda d: films.get(key(d["Name"], d["Year"]), {}).get("url", d["Letterboxd URI"])
+    diary_out = [{
+        "date": d["Watched Date"], "name": d["Name"], "year": to_int(d["Year"]), "url": film_url(d),
+        "rating": to_float(d.get("Rating")), "rewatch": bool(d.get("Rewatch")),
+        "liked": film_url(d) in liked_urls,
+    } for d in reversed(entries)]
+
+    # review text, only when explicitly requested (it becomes public on the website)
+    reviews_out = []
+    if include_reviews:
+        for rv in reviews:
+            text = (rv.get("Review") or "").strip()
+            if text:
+                reviews_out.append({"name": rv["Name"], "year": to_int(rv["Year"]), "url": film_url(rv),
+                                    "rating": to_float(rv.get("Rating")), "date": rv.get("Watched Date") or rv["Date"], "text": text})
 
     now = date.today()
     wl = []
@@ -211,6 +224,8 @@ def build(raw: Path, include_reviews: bool):
         "films": film_list,
         "watchlist": wl,
         "lists": [{k: v for k, v in l.items()} for l in lists],
+        "diary": diary_out,
+        "reviews": reviews_out,
     }
 
 

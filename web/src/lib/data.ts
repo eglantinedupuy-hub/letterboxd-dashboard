@@ -37,6 +37,9 @@ export type Film = {
 export type WatchlistItem = { name: string; year: number | null; url: string; added: string; days_waiting: number | null };
 export type FilmList = { name: string; created: string | null; url: string | null; description: string; films: { position: number; name: string; year: number | null; url: string }[] };
 
+export type DiaryEntry = { date: string; name: string; year: number | null; url: string; rating: number | null; rewatch: boolean; liked: boolean };
+export type Review = { name: string; year: number | null; url: string; rating: number | null; date: string; text: string };
+
 async function readJson<T>(name: string): Promise<T> {
   const file = path.join(process.cwd(), "public", "data", `${name}.json`);
   try {
@@ -55,3 +58,22 @@ export const getReleaseDecades = () => readJson<{ decade: number; films: number;
 export const getFilms = () => readJson<Film[]>("films");
 export const getWatchlist = () => readJson<WatchlistItem[]>("watchlist");
 export const getLists = () => readJson<FilmList[]>("lists");
+export const getDiary = () => readJson<DiaryEntry[]>("diary");
+/** Reviews only exist if the pipeline ran with --include-reviews; otherwise an empty list. */
+export const getReviews = () => readJson<Review[]>("reviews").catch(() => [] as Review[]);
+
+export type Tmdb = {
+  tmdb_id: number;
+  poster: string | null;
+  genres: string[];
+  runtime: number | null;
+  language: string | null;
+  countries: string[];
+  directors: string[];
+  tmdb_rating: number | null;
+  tmdb_votes: number | null;
+  overview: string;
+  watch: { link: string | null; stream: string[]; rent: string[]; buy: string[] };
+};
+/** TMDB details keyed by Letterboxd film URL. Empty until pipeline/enrich_tmdb.py has been run. */
+export const getTmdb = () => readJson<Record<string, Tmdb>>("tmdb").catch(() => ({}) as Record<string, Tmdb>);

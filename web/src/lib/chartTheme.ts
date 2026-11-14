@@ -4,11 +4,11 @@
 export const chart = {
   accent: "#ff8000", // Letterboxd orange — the main series
   star: "#00e054", // ratings
-  context: "#445566", // background/comparison series
+  context: "#56687a", // background/comparison series
   grid: "rgba(255,255,255,0.06)",
   axisText: "#99aabb",
-  tooltipBg: "#2c3440",
-  surface: "#1c2228",
+  tooltipBg: "#445566",
+  surface: "#2c3440",
 };
 
 export const axisTick = { fill: chart.axisText, fontSize: 12 };

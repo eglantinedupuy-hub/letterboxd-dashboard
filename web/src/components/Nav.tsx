@@ -5,9 +5,8 @@ import { usePathname } from "next/navigation";
 
 const LINKS = [
   { href: "/", label: "Overview" },
-  { href: "/films", label: "Films" },
-  { href: "/watchlist", label: "Watchlist" },
-  { href: "/lists", label: "Lists" },
+  { href: "/stats", label: "Stats" },
+  { href: "/pick", label: "Pick a film" },
 ];
 
 /** Top navigation bar; highlights the current page. */
