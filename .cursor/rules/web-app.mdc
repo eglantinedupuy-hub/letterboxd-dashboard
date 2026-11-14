@@ -1,0 +1,11 @@
+---
+description: Conventions for the Next.js dashboard
+globs: web/**
+alwaysApply: false
+---
+# Web app (Next.js 16 App Router + TypeScript + Tailwind 4 + Recharts 3)
+- Pages are server components that read JSON via `src/lib/data.ts`; charts/interactive bits are small client components.
+- Reuse `Card`, `StatCard`, `Stars`, `SimpleBarChart` and colours from `src/lib/chartTheme.ts` / `globals.css` (@theme).
+- Text uses text colours (foreground/muted), never the chart colours. Bars: 4px rounded tops, max 24px wide. Every chart has hover tooltips.
+- Every film links to its Letterboxd URL (opens in a new tab).
+- Must look good on a phone (test at ~390px wide).
