@@ -2,8 +2,9 @@
 
 import Image from "next/image";
 import { useMemo, useState } from "react";
-import { moods, ratingBands, whereToWatchUrl, type Mood } from "@/config";
+import { indieRules, moods, ratingBands, whereToWatchUrl, type Mood } from "@/config";
 import type { Tmdb } from "@/lib/data";
+import { MultiSelect } from "./MultiSelect";
 
 export type Candidate = {
   name: string;
@@ -23,69 +24,80 @@ type Props = {
   seed: number;
 };
 
-const ERAS = [
-  { id: "all", label: "Any era", test: () => true },
-  { id: "classic", label: "Before 1980", test: (y: number) => y < 1980 },
-  { id: "8090", label: "80s & 90s", test: (y: number) => y >= 1980 && y < 2000 },
-  { id: "2000", label: "2000s", test: (y: number) => y >= 2000 && y < 2010 },
-  { id: "2010", label: "2010s", test: (y: number) => y >= 2010 && y < 2020 },
-  { id: "2020", label: "2020s", test: (y: number) => y >= 2020 },
+const ERAS: [string, string, (y: number) => boolean][] = [
+  ["classic", "Before 1980", (y) => y < 1980],
+  ["8090", "80s & 90s", (y) => y >= 1980 && y < 2000],
+  ["2000", "2000s", (y) => y >= 2000 && y < 2010],
+  ["2010", "2010s", (y) => y >= 2010 && y < 2020],
+  ["2020", "2020s", (y) => y >= 2020],
+];
+const LANGS: [string, string][] = [["fr", "French"], ["en", "English"], ["other", "Other languages"]];
+const RATINGS: [string, string][] = [["high", `Highly rated (${ratingBands.high}+)`], ["mid", `Mid rated (${ratingBands.mid}–${ratingBands.high})`]];
+const DIRECTORS: [string, string][] = [["seen", "A director I know"], ["new", "A new director"]];
+const LENGTHS: [string, string, (m: number) => boolean][] = [
+  ["short", "~90 min (≤100)", (m) => m <= 100],
+  ["under2h", "Under 2h", (m) => m <= 120],
+  ["medium", "100–120 min", (m) => m > 100 && m <= 120],
+  ["long", "120+ min", (m) => m > 120],
 ];
 
+// Every filter is a list of ticked options: empty = anything. Options within a filter are OR, filters are AND.
 type Filters = {
-  era: string;
-  language: "any" | "fr" | "en" | "other";
-  genre: string;
-  rating: "any" | "high" | "mid";
-  director: "any" | "seen" | "new";
-  length: "any" | "short" | "medium" | "long";
+  era: string[];
+  language: string[];
+  genre: string[];
+  rating: string[];
+  director: string[];
+  length: string[];
+  indie: boolean; // set by the Indie gem mood
   oldestFirst: boolean;
 };
-const DEFAULTS: Filters = { era: "all", language: "any", genre: "any", rating: "any", director: "any", length: "any", oldestFirst: false };
+const DEFAULTS: Filters = { era: [], language: [], genre: [], rating: [], director: [], length: [], indie: false, oldestFirst: false };
 
 const poster = (path: string | null | undefined, size = "w342") => (path ? `https://image.tmdb.org/t/p/${size}${path}` : null);
 
-/** Does a film pass the dropdown filters? (Filters that need TMDB data exclude films without it.) */
-function passes(c: Candidate, f: Filters, seen: Set<string>): boolean {
+/** Indie = in my Indie list, tagged "independent film", made by an indie company, or a well-rated lesser-known film. */
+function isIndie(c: Candidate, indieList: Set<string>): boolean {
+  if (indieList.has(c.url)) return true;
   const t = c.tmdb;
-  if (f.era !== "all" && !(c.year != null && ERAS.find((e) => e.id === f.era)!.test(c.year))) return false;
-  if (f.language !== "any") {
-    if (!t?.language) return false;
-    if (f.language === "other" ? ["fr", "en"].includes(t.language) : t.language !== f.language) return false;
-  }
-  if (f.genre !== "any" && !t?.genres.includes(f.genre)) return false;
-  if (f.rating !== "any") {
-    const r = t?.tmdb_rating;
-    if (r == null || !t?.tmdb_votes) return false;
-    if (f.rating === "high" && r < ratingBands.high) return false;
-    if (f.rating === "mid" && (r < ratingBands.mid || r >= ratingBands.high)) return false;
-  }
-  if (f.director !== "any") {
-    if (!t?.directors.length) return false;
-    const known = t.directors.some((d) => seen.has(d));
-    if (f.director === "seen" ? !known : known) return false;
-  }
-  if (f.length !== "any") {
-    const m = t?.runtime;
-    if (!m) return false;
-    if (f.length === "short" && m > 100) return false;
-    if (f.length === "medium" && (m <= 100 || m > 120)) return false;
-    if (f.length === "long" && m <= 120) return false;
-  }
-  return true;
+  if (!t) return false;
+  if (t.keywords?.some((k) => indieRules.keywords.includes(k.toLowerCase()))) return true;
+  if (t.companies?.some((co) => indieRules.companies.includes(co))) return true;
+  const g = indieRules.hiddenGem;
+  return !!(t.tmdb_votes && t.tmdb_votes <= g.maxVotes && (t.tmdb_rating ?? 0) >= g.minRating);
 }
 
-/** Does a film fit a mood? Films hand-picked in the mood's own list always fit. */
-function fitsMood(c: Candidate, m: Mood, listUrls: Set<string>): boolean {
-  if (listUrls.has(c.url)) return true;
-  const hasRules = m.era || m.genres || m.maxRuntime || m.minRating || m.language;
-  if (!hasRules) return false; // list-only mood: only the list's films
+type Ctx = { seen: Set<string>; moodList: Set<string>; indieList: Set<string> };
+
+/**
+ * Does a film pass the filters? Filters that need TMDB data exclude films without it.
+ * Films hand-picked in the active mood's own list skip the genre filter (they already fit the mood).
+ */
+function passes(c: Candidate, f: Filters, { seen, moodList, indieList }: Ctx): boolean {
   const t = c.tmdb;
-  if (m.era && !(c.year != null && ERAS.find((e) => e.id === m.era)!.test(c.year))) return false;
-  if (m.genres && !t?.genres.some((g) => m.genres!.includes(g))) return false;
-  if (m.maxRuntime && !(t?.runtime && t.runtime <= m.maxRuntime)) return false;
-  if (m.minRating && !(t?.tmdb_rating && t.tmdb_rating >= m.minRating)) return false;
-  if (m.language && !(t?.language && (m.language === "other" ? !["fr", "en"].includes(t.language) : t.language === m.language))) return false;
+  if (f.era.length && !(c.year != null && ERAS.some(([id, , test]) => f.era.includes(id) && test(c.year!)))) return false;
+  if (f.language.length) {
+    if (!t?.language) return false;
+    const lang = ["fr", "en"].includes(t.language) ? t.language : "other";
+    if (!f.language.includes(lang)) return false;
+  }
+  if (f.genre.length && !moodList.has(c.url) && !t?.genres.some((g) => f.genre.includes(g))) return false;
+  if (f.rating.length) {
+    const r = t?.tmdb_rating;
+    if (r == null || !t?.tmdb_votes) return false;
+    const band = r >= ratingBands.high ? "high" : r >= ratingBands.mid ? "mid" : "low";
+    if (!f.rating.includes(band)) return false;
+  }
+  if (f.director.length) {
+    if (!t?.directors.length) return false;
+    const known = t.directors.some((d) => seen.has(d)) ? "seen" : "new";
+    if (!f.director.includes(known)) return false;
+  }
+  if (f.length.length) {
+    const m = t?.runtime;
+    if (!m || !LENGTHS.some(([id, , test]) => f.length.includes(id) && test(m))) return false;
+  }
+  if (f.indie && !isIndie(c, indieList)) return false;
   return true;
 }
 
@@ -93,26 +105,50 @@ export function WatchlistShuffle({ watchlist, listFilms, seenDirectors, hasTmdb,
   const [filters, setFilters] = useState<Filters>(DEFAULTS);
   const [moodId, setMoodId] = useState<string | null>(null);
   const [offset, setOffset] = useState(seed); // new value on every shuffle; starts as "today's pick"
+  const [focus, setFocus] = useState(0); // which of the 4 picks is shown in the big card
   const seen = useMemo(() => new Set(seenDirectors), [seenDirectors]);
+  const indieList = useMemo(() => new Set((listFilms["indie movies"] ?? []).map((x) => x.url)), [listFilms]);
   const mood = moods.find((m) => m.id === moodId) ?? null;
-  const set = <K extends keyof Filters>(k: K, v: Filters[K]) => setFilters((f) => ({ ...f, [k]: v }));
 
-  const genres = useMemo(
-    () => [...new Set(watchlist.flatMap((c) => c.tmdb?.genres ?? []))].sort(),
-    [watchlist],
-  );
+  const update = (patch: Partial<Filters>) => {
+    setFilters((f) => ({ ...f, ...patch }));
+    setFocus(0);
+  };
+  function reset() {
+    setFilters(DEFAULTS);
+    setMoodId(null);
+    setFocus(0);
+  }
+  // Picking a mood loads its filters (which you can then change); clicking it again resets everything.
+  const pickMood = (m: Mood) => {
+    if (moodId === m.id) return reset();
+    const mf = m.filters ?? {};
+    setMoodId(m.id);
+    setFocus(0);
+    setFilters({
+      ...DEFAULTS,
+      genre: m.genres ?? [],
+      era: mf.era ? [mf.era] : [],
+      language: mf.language ? [mf.language] : [],
+      rating: mf.rating ? [mf.rating] : [],
+      length: mf.length ? [mf.length] : [],
+      indie: !!mf.indie,
+    });
+  };
+
+  const genres = useMemo(() => [...new Set(watchlist.flatMap((c) => c.tmdb?.genres ?? []))].sort(), [watchlist]);
 
   const pool = useMemo(() => {
     let list = watchlist;
-    const moodList = mood?.list ? listFilms[mood.list] ?? [] : [];
-    const listUrls = new Set(moodList.map((x) => x.url));
-    if (moodList.length) list = [...watchlist, ...moodList.filter((x) => !watchlist.some((w) => w.url === x.url))];
-    list = list.filter((c) => passes(c, filters, seen) && (!mood || fitsMood(c, mood, listUrls)));
+    const moodFilms = mood?.list ? listFilms[mood.list] ?? [] : [];
+    const moodList = new Set(moodFilms.map((x) => x.url));
+    if (moodFilms.length) list = [...watchlist, ...moodFilms.filter((x) => !watchlist.some((w) => w.url === x.url))];
+    list = list.filter((c) => passes(c, filters, { seen, moodList, indieList }));
     if (filters.oldestFirst) {
       list = [...list].sort((a, b) => (a.added ?? "9").localeCompare(b.added ?? "9")).slice(0, Math.max(4, Math.ceil(list.length / 4)));
     }
     return list;
-  }, [watchlist, listFilms, filters, mood, seen]);
+  }, [watchlist, listFilms, filters, mood, seen, indieList]);
 
   // 4 distinct picks derived from the offset (stable between renders, new on shuffle)
   const picks = useMemo(() => {
@@ -126,9 +162,12 @@ export function WatchlistShuffle({ watchlist, listFilms, seenDirectors, hasTmdb,
     return out;
   }, [pool, offset]);
 
-  const shuffle = () => setOffset(Math.floor(Math.random() * 1_000_000));
-  const reset = () => { setFilters(DEFAULTS); setMoodId(null); };
-  const [main, ...backups] = picks;
+  const shuffle = () => {
+    setOffset(Math.floor(Math.random() * 1_000_000));
+    setFocus(0);
+  };
+  const main = picks[Math.min(focus, picks.length - 1)];
+  const backups = picks.filter((p) => p !== main);
   const active = moodId !== null || JSON.stringify(filters) !== JSON.stringify(DEFAULTS);
 
   // Letterboxd can import a CSV into a new list (letterboxd.com/import)
@@ -142,8 +181,6 @@ export function WatchlistShuffle({ watchlist, listFilms, seenDirectors, hasTmdb,
     URL.revokeObjectURL(a.href);
   };
 
-  const needsTmdb = hasTmdb ? "" : "Needs TMDB data — run pipeline/enrich_tmdb.py";
-
   return (
     <div className="space-y-6">
       {/* Moods */}
@@ -154,7 +191,8 @@ export function WatchlistShuffle({ watchlist, listFilms, seenDirectors, hasTmdb,
             <button
               key={m.id}
               type="button"
-              onClick={() => setMoodId(moodId === m.id ? null : m.id)}
+              onClick={() => pickMood(m)}
+              title={m.id === "indie" ? "My Indie list, films tagged independent, indie studios (A24, Neon…) and well-rated lesser-known films" : undefined}
               className={`rounded-full px-4 py-1.5 text-sm transition ${moodId === m.id ? "bg-accent text-black" : "bg-card text-foreground hover:bg-card-hover"}`}
             >
               <span aria-hidden>{m.emoji}</span> {m.label}
@@ -163,21 +201,16 @@ export function WatchlistShuffle({ watchlist, listFilms, seenDirectors, hasTmdb,
         </div>
       </div>
 
-      {/* Filters: one row of dropdowns */}
-      <div className="flex flex-wrap items-center gap-2" title={needsTmdb}>
-        <Select label="Era" value={filters.era} onChange={(v) => set("era", v)} options={ERAS.map((e) => [e.id, e.label])} />
-        <Select label="Language" value={filters.language} disabled={!hasTmdb} onChange={(v) => set("language", v as Filters["language"])}
-          options={[["any", "Any language"], ["fr", "French"], ["en", "English"], ["other", "Other languages"]]} />
-        <Select label="Genre" value={filters.genre} disabled={!hasTmdb} onChange={(v) => set("genre", v)}
-          options={[["any", "Any genre"], ...genres.map((g) => [g, g] as [string, string])]} />
-        <Select label="Rating" value={filters.rating} disabled={!hasTmdb} onChange={(v) => set("rating", v as Filters["rating"])}
-          options={[["any", "Any rating"], ["high", `Highly rated (${ratingBands.high}+)`], ["mid", `Mid rated (${ratingBands.mid}–${ratingBands.high})`]]} />
-        <Select label="Director" value={filters.director} disabled={!hasTmdb} onChange={(v) => set("director", v as Filters["director"])}
-          options={[["any", "Any director"], ["seen", "A director I know"], ["new", "A new director"]]} />
-        <Select label="Length" value={filters.length} disabled={!hasTmdb} onChange={(v) => set("length", v as Filters["length"])}
-          options={[["any", "Any length"], ["short", "~90 min (≤100)"], ["medium", "100–120 min"], ["long", "120+ min"]]} />
+      {/* Filters: tick as many options as you like in each */}
+      <div className="flex flex-wrap items-center gap-2" title={hasTmdb ? undefined : "Needs TMDB data — run pipeline/enrich_tmdb.py"}>
+        <MultiSelect label="Era" options={ERAS.map(([id, l]) => [id, l])} selected={filters.era} onChange={(v) => update({ era: v })} />
+        <MultiSelect label="Language" options={LANGS} selected={filters.language} onChange={(v) => update({ language: v })} disabled={!hasTmdb} />
+        <MultiSelect label="Genre" options={genres.map((g) => [g, g])} selected={filters.genre} onChange={(v) => update({ genre: v })} disabled={!hasTmdb} />
+        <MultiSelect label="Rating" options={RATINGS} selected={filters.rating} onChange={(v) => update({ rating: v })} disabled={!hasTmdb} />
+        <MultiSelect label="Director" options={DIRECTORS} selected={filters.director} onChange={(v) => update({ director: v })} disabled={!hasTmdb} />
+        <MultiSelect label="Length" options={LENGTHS.map(([id, l]) => [id, l])} selected={filters.length} onChange={(v) => update({ length: v })} disabled={!hasTmdb} />
         <label className="flex cursor-pointer items-center gap-2 px-2 text-sm text-muted">
-          <input type="checkbox" checked={filters.oldestFirst} onChange={(e) => set("oldestFirst", e.target.checked)} className="accent-[#ff8000]" />
+          <input type="checkbox" checked={filters.oldestFirst} onChange={(e) => update({ oldestFirst: e.target.checked })} className="accent-[#ff8000]" />
           Waiting the longest
         </label>
         {active && (
@@ -186,7 +219,10 @@ export function WatchlistShuffle({ watchlist, listFilms, seenDirectors, hasTmdb,
           </button>
         )}
       </div>
-      <p className="text-sm text-muted">{pool.length} film{pool.length === 1 ? "" : "s"} match</p>
+      <p className="text-sm text-muted">
+        {pool.length} film{pool.length === 1 ? "" : "s"} match
+        {filters.indie && " · indie & hidden gems only"}
+      </p>
 
       {!main ? (
         <p className="rounded-2xl bg-card p-6 text-muted">Nothing matches — try loosening a filter.</p>
@@ -218,9 +254,10 @@ export function WatchlistShuffle({ watchlist, listFilms, seenDirectors, hasTmdb,
                   ))}
                   {main.tmdb.tmdb_rating ? <span className="rounded-full bg-card-hover px-2.5 py-1">TMDB {main.tmdb.tmdb_rating.toFixed(1)}</span> : null}
                   {main.tmdb.directors.some((d) => seen.has(d)) && <span className="rounded-full bg-card-hover px-2.5 py-1 text-star">Director I’ve seen</span>}
+                  {isIndie(main, indieList) && <span className="rounded-full bg-card-hover px-2.5 py-1 text-link">Indie / hidden gem</span>}
                 </div>
               )}
-              {main.tmdb?.overview && <p className="mt-4 line-clamp-4 max-w-2xl text-sm leading-relaxed text-muted">{main.tmdb.overview}</p>}
+              {main.tmdb?.overview && <p className="mt-4 line-clamp-5 max-w-2xl text-sm leading-relaxed text-muted">{main.tmdb.overview}</p>}
               <p className="mt-3 text-sm text-muted">
                 {main.source === "watchlist"
                   ? `On my watchlist since ${main.added}${main.days_waiting != null ? ` · waiting ${main.days_waiting} days` : ""}`
@@ -249,10 +286,15 @@ export function WatchlistShuffle({ watchlist, listFilms, seenDirectors, hasTmdb,
 
           {backups.length > 0 && (
             <div className="space-y-3">
-              <p className="text-sm text-muted">Or maybe…</p>
+              <p className="text-sm text-muted">Or maybe… <span className="text-xs">(click one to see its details)</span></p>
               <div className="grid gap-3 sm:grid-cols-3">
                 {backups.map((b) => (
-                  <div key={b.url} className="flex gap-3 rounded-2xl bg-card p-4">
+                  <button
+                    key={b.url}
+                    type="button"
+                    onClick={() => setFocus(picks.indexOf(b))}
+                    className="flex gap-3 rounded-2xl bg-card p-4 text-left transition hover:-translate-y-0.5 hover:bg-card-hover"
+                  >
                     {poster(b.tmdb?.poster, "w154") && (
                       <Image src={poster(b.tmdb?.poster, "w154")!} alt="" width={60} height={90} unoptimized className="h-[90px] w-[60px] shrink-0 rounded-md object-cover" />
                     )}
@@ -262,12 +304,9 @@ export function WatchlistShuffle({ watchlist, listFilms, seenDirectors, hasTmdb,
                         {b.year}
                         {b.tmdb?.runtime ? ` · ${b.tmdb.runtime} min` : ""}
                       </p>
-                      <div className="mt-2 flex gap-3 text-sm">
-                        <a href={b.tmdb?.watch.link ?? whereToWatchUrl(b.name, b.year)} target="_blank" rel="noopener noreferrer" className="text-link hover:underline">Where to watch</a>
-                        <a href={b.url} target="_blank" rel="noopener noreferrer" className="text-muted hover:text-foreground">Letterboxd</a>
-                      </div>
+                      {b.tmdb?.genres.length ? <p className="mt-1 truncate text-xs text-muted">{b.tmdb.genres.slice(0, 3).join(" · ")}</p> : null}
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
               <button type="button" onClick={downloadCsv} className="text-sm text-muted underline-offset-4 hover:text-foreground hover:underline">
@@ -278,21 +317,5 @@ export function WatchlistShuffle({ watchlist, listFilms, seenDirectors, hasTmdb,
         </>
       )}
     </div>
-  );
-}
-
-function Select({ label, value, options, onChange, disabled }: { label: string; value: string; options: [string, string][]; onChange: (v: string) => void; disabled?: boolean }) {
-  return (
-    <select
-      aria-label={label}
-      value={value}
-      disabled={disabled}
-      onChange={(e) => onChange(e.target.value)}
-      className={`rounded-full px-3 py-1.5 text-sm outline-none transition ${value !== options[0][0] ? "bg-white text-black" : "bg-card text-foreground hover:bg-card-hover"} disabled:cursor-not-allowed disabled:opacity-40`}
-    >
-      {options.map(([v, l]) => (
-        <option key={v} value={v} className="bg-card text-foreground">{l}</option>
-      ))}
-    </select>
   );
 }

@@ -20,31 +20,44 @@ export const config = {
 export const ratingBands = { high: 7.3, mid: 6.0 };
 
 /**
- * Moods for "Pick a film". Each mood is a preset of filters, and can also pull in films
- * from one of my Letterboxd lists (matched by list name, case-insensitive).
+ * Moods for "Pick a film". A mood is a starting set of filters (you can still change any filter
+ * after picking it), plus optionally one of my Letterboxd lists whose films are added to the pool.
  */
+export type MoodFilters = {
+  era?: string; // "classic" | "8090" | "2000" | "2010" | "2020"
+  language?: "fr" | "en" | "other";
+  rating?: "high" | "mid";
+  length?: "short" | "under2h" | "medium" | "long";
+  indie?: boolean;
+};
 export type Mood = {
   id: string;
   label: string;
   emoji: string;
-  genres?: string[]; // film matches if it has ANY of these TMDB genres
-  maxRuntime?: number;
-  minRating?: number;
-  language?: "fr" | "en" | "other";
-  era?: string; // id from ERAS in WatchlistShuffle
-  list?: string; // name of one of my lists to include
+  genres?: string[]; // the mood's genre mix: a film matches if it has ANY of these TMDB genres
+  filters?: MoodFilters;
+  list?: string; // name of one of my lists (case-insensitive) whose films join the pool
 };
 
 export const moods: Mood[] = [
-  { id: "lowbrain", label: "Low-brain night", emoji: "🍿", genres: ["Comedy", "Romance", "Animation", "Family"], maxRuntime: 115, list: "feeling low brain movies" },
-  { id: "smart", label: "Smarty pants", emoji: "🧠", genres: ["Documentary", "History", "Drama", "War"], minRating: 7.0, list: "feeling smarty pants movies" },
-  { id: "oldie", label: "Oldie", emoji: "🎞️", era: "classic", list: "feeling oldie movies" },
-  { id: "tense", label: "Edge of my seat", emoji: "😱", genres: ["Thriller", "Horror", "Mystery", "Crime"] },
-  { id: "french", label: "Soirée française", emoji: "🥐", language: "fr" },
-  { id: "short", label: "Short & sweet", emoji: "⏱️", maxRuntime: 100 },
-  { id: "indie", label: "Indie gem", emoji: "💎", list: "indie movies" },
+  { id: "lowbrain", label: "Low-brain night", emoji: "🍿", genres: ["Comedy", "Romance", "Animation", "Family"], filters: { length: "under2h" }, list: "feeling low brain movies" },
+  { id: "smart", label: "Smarty pants", emoji: "🧠", genres: ["Documentary", "History", "Drama", "War"], filters: { rating: "high" }, list: "feeling smarty pants movies" },
+  { id: "oldie", label: "Oldie", emoji: "🎞️", filters: { era: "classic" }, list: "feeling oldie movies" },
+  { id: "french", label: "Soirée française", emoji: "🥐", filters: { language: "fr" } },
+  { id: "short", label: "Short & sweet", emoji: "⏱️", filters: { length: "short" } },
+  { id: "indie", label: "Indie gem", emoji: "💎", filters: { indie: true }, list: "indie movies" },
   { id: "docs", label: "Learn something", emoji: "📚", genres: ["Documentary"], list: "documentaries" },
 ];
+
+/**
+ * What counts as "indie" (any one is enough): in my Indie list, tagged "independent film" on TMDB,
+ * made by one of these companies, or a lesser-known film (few TMDB votes) that's well rated.
+ */
+export const indieRules = {
+  keywords: ["independent film"],
+  companies: ["A24", "Neon", "IFC Films", "MUBI", "Magnolia Pictures", "Oscilloscope", "Utopia", "Kino Lorber", "Annapurna Pictures", "Sundance Institute", "Film4 Productions", "BBC Film"],
+  hiddenGem: { maxVotes: 1500, minRating: 6.5 },
+};
 
 /** Letterboxd search link, for films where the export gives no link. */
 export const letterboxdSearchUrl = (name: string) => `https://letterboxd.com/search/${encodeURIComponent(name)}/`;

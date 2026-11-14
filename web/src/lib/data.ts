@@ -73,6 +73,8 @@ export type Tmdb = {
   tmdb_rating: number | null;
   tmdb_votes: number | null;
   overview: string;
+  companies?: string[];
+  keywords?: string[];
   watch: { link: string | null; stream: string[]; rent: string[]; buy: string[] };
 };
 /** TMDB details keyed by Letterboxd film URL. Empty until pipeline/enrich_tmdb.py has been run. */

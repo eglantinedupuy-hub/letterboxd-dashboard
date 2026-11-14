@@ -51,10 +51,17 @@ def get(s: requests.Session, path: str, **params):
         if r.status_code == 429:  # rate limited: wait and retry
             time.sleep(2 * (attempt + 1))
             continue
-        r.raise_for_status()
+        if r.status_code == 401:  # stop right away instead of failing 700 times
+            sys.exit("TMDB rejected the key (401 Unauthorized). Re-copy it from themoviedb.org -> Settings -> API:\n"
+                     "  - 'API Key' = 32 characters (numbers and letters a-f), or\n"
+                     "  - 'API Read Access Token' = a long text starting with eyJ\n"
+                     "Paste it after TMDB_API_KEY= in .env (no spaces or quotes).")
+        if r.status_code >= 400:
+            # don't print r.url: it contains the API key
+            raise requests.HTTPError(f"TMDB error {r.status_code} on {path}")
         time.sleep(0.05)  # be gentle
         return r.json()
-    r.raise_for_status()
+    raise requests.HTTPError(f"TMDB still rate-limiting after retries on {path}")
 
 
 def find_id(s, name: str, year) -> int | None:
@@ -68,7 +75,7 @@ def find_id(s, name: str, year) -> int | None:
 
 
 def details(s, tmdb_id: int) -> dict:
-    d = get(s, f"/movie/{tmdb_id}", append_to_response="credits,watch/providers")
+    d = get(s, f"/movie/{tmdb_id}", append_to_response="credits,watch/providers,keywords")
     providers = (d.get("watch/providers") or {}).get("results", {}).get(REGION, {})
     names = lambda kind: [p["provider_name"] for p in providers.get(kind, [])]
     return {
@@ -82,6 +89,8 @@ def details(s, tmdb_id: int) -> dict:
         "tmdb_rating": d.get("vote_average"),  # 0-10
         "tmdb_votes": d.get("vote_count"),
         "overview": d.get("overview") or "",
+        "companies": [c["name"] for c in d.get("production_companies", [])],
+        "keywords": [k["name"] for k in (d.get("keywords") or {}).get("keywords", [])][:25],
         "watch": {"link": providers.get("link"), "stream": names("flatrate"), "rent": names("rent"), "buy": names("buy")},
     }
 
@@ -103,15 +112,16 @@ def main():
     s = session_with_key()
     cache = json.loads(CACHE.read_text(encoding="utf-8")) if CACHE.exists() else {}
     films = all_films()
-    todo = [u for u in films if u not in cache]
+    # new films, plus films cached before companies/keywords were added (refetch their details only)
+    todo = [u for u in films if u not in cache or (cache[u].get("tmdb_id") and "companies" not in cache[u])]
     print(f"{len(films)} films, {len(todo)} to fetch from TMDB (the rest are cached)")
 
     for i, url in enumerate(todo, 1):
         name, year = films[url]
         try:
-            tmdb_id = find_id(s, name, year)
+            tmdb_id = cache.get(url, {}).get("tmdb_id") or find_id(s, name, year)
             cache[url] = details(s, tmdb_id) if tmdb_id else {"tmdb_id": None}
-        except requests.HTTPError as e:
+        except (requests.HTTPError, requests.ConnectionError, requests.Timeout) as e:
             print(f"  ! {name} ({year}): {e}")
             continue
         if i % 25 == 0 or i == len(todo):
