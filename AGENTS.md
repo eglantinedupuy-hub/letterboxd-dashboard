@@ -19,7 +19,7 @@ Sister project of `spotify-dashboard` (same stack and conventions).
 data/raw/          # Letterboxd export (CSVs). GITIGNORED. Never commit.
 data/processed/    # JSON summaries from the pipeline. Committed (public info anyway, no review text).
 pipeline/          # process_letterboxd.py
-web/               # Next.js app; `npm run sync-data` copies data/processed -> web/public/data
+web/               # Next.js app; `npm run sync-data` copies data/processed -> web/src/data (committed; imported by the site)
 docs/PLAN.md       # roadmap + checklist
 ```
 
@@ -44,5 +44,5 @@ docs/PLAN.md       # roadmap + checklist
 4. Ask before adding dependencies, deleting files, or restructuring folders.
 5. Small steps, one feature at a time. After each change: plain-language summary, how to test, tick `docs/PLAN.md`.
 6. Reuse the existing components (`Card`, `StatCard`, `Stars`, `FilmCard`, `SimpleBarChart`, `chartTheme.ts`) to keep one consistent look.
-7. Personal settings (challenge goal, favourites, JustWatch region) live in `web/src/config.ts`.
+7. Personal settings (challenge goal, moods, JustWatch region) live in `web/src/config.ts`; favourite films in `data/favourites.json`.
 8. Don't rebuild what Letterboxd already shows well (full film list, watchlist, lists). Focus on new insights.

@@ -7,13 +7,7 @@ export const config = {
   /** My time zone, used for "this week / this month". */
   timeZone: "America/Toronto",
   letterboxdUser: "eglantinee",
-  /** My 4 profile favourites (the export only has links for these, so names are typed here). */
-  favourites: [
-    { name: "The Little Hours", year: 2017 },
-    { name: "Moonrise Kingdom", year: 2012 },
-    { name: "Les Demoiselles de Rochefort", year: 1967 },
-    { name: "LOL (Laughing Out Loud)", year: 2008, url: "https://boxd.it/2lxI" },
-  ] as { name: string; year: number; url?: string }[],
+  // favourite films live in data/favourites.json
 };
 
 /** "Pick a film" filter thresholds (TMDB ratings are out of 10). */

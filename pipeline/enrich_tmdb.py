@@ -96,30 +96,42 @@ def details(s, tmdb_id: int) -> dict:
 
 
 def all_films():
-    """Every film we know about: watched, watchlist, list entries -> {url: (name, year)}."""
+    """Every film we know about -> {key: (name, year, tmdb_id or None)}.
+    Keys are Letterboxd film URLs, plus "favourite:<name>" for my profile favourites."""
     films = {}
-    for f in json.loads((PROCESSED / "films.json").read_text(encoding="utf-8")):
-        films[f["url"]] = (f["name"], f["year"])
-    for w in json.loads((PROCESSED / "watchlist.json").read_text(encoding="utf-8")):
-        films.setdefault(w["url"], (w["name"], w["year"]))
-    for lst in json.loads((PROCESSED / "lists.json").read_text(encoding="utf-8")):
+    load = lambda name: json.loads((PROCESSED / name).read_text(encoding="utf-8")) if (PROCESSED / name).exists() else []
+    for f in load("films.json"):
+        films[f["url"]] = (f["name"], f["year"], None)
+    for w in load("watchlist.json"):
+        films.setdefault(w["url"], (w["name"], w["year"], None))
+    for lst in load("lists.json"):
         for f in lst["films"]:
-            films.setdefault(f["url"], (f["name"], f["year"]))
+            films.setdefault(f["url"], (f["name"], f["year"], None))
+    for d in load("diary.json"):  # entries added from the RSS feed already know their TMDB id
+        films.setdefault(d["url"], (d["name"], d["year"], d.get("tmdb_id")))
+    fav_file = ROOT / "data" / "favourites.json"
+    if fav_file.exists():
+        for f in json.loads(fav_file.read_text(encoding="utf-8")):
+            films.setdefault(f"favourite:{f['name']}", (f["name"], f.get("year"), None))
     return films
 
 
 def main():
     s = session_with_key()
     cache = json.loads(CACHE.read_text(encoding="utf-8")) if CACHE.exists() else {}
+    # the published tmdb.json doubles as a cache (useful when data/raw/ isn't there, e.g. in GitHub Actions)
+    if (PROCESSED / "tmdb.json").exists():
+        for k, v in json.loads((PROCESSED / "tmdb.json").read_text(encoding="utf-8")).items():
+            cache.setdefault(k, v)
     films = all_films()
     # new films, plus films cached before companies/keywords were added (refetch their details only)
     todo = [u for u in films if u not in cache or (cache[u].get("tmdb_id") and "companies" not in cache[u])]
     print(f"{len(films)} films, {len(todo)} to fetch from TMDB (the rest are cached)")
 
     for i, url in enumerate(todo, 1):
-        name, year = films[url]
+        name, year, known_id = films[url]
         try:
-            tmdb_id = cache.get(url, {}).get("tmdb_id") or find_id(s, name, year)
+            tmdb_id = known_id or cache.get(url, {}).get("tmdb_id") or find_id(s, name, year)
             cache[url] = details(s, tmdb_id) if tmdb_id else {"tmdb_id": None}
         except (requests.HTTPError, requests.ConnectionError, requests.Timeout) as e:
             print(f"  ! {name} ({year}): {e}")

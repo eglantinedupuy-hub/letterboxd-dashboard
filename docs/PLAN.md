@@ -22,7 +22,7 @@ Principle: don't copy what Letterboxd already shows (film list, watchlist, lists
 - [x] **Stats**: fun facts, calendar heatmap per year, films per year, weekday, films per month, ratings, decades
 - [x] **Pick a film**: watchlist shuffle with era filters + "waiting longest", JustWatch + Letterboxd links, export shortlist as a Letterboxd-importable CSV
 - [x] **Pick a film v2**: moods (presets + my mood lists), filters for language, genre, TMDB rating, known/new director, length, era; posters + streaming info (needs TMDB)
-- [ ] Posters on the Overview film cards (needs TMDB)
+- [x] Posters on the Overview film cards, favourites and diary reviews
 - [ ] Challenge goal per year (different goal for each year, history of past challenges)
 - [ ] List completion: % of each list I've watched (e.g. Barb's cinematic education)
 - [ ] Rating vs average: how my ratings compare with Letterboxd's average (needs data the export doesn't have)
@@ -30,10 +30,11 @@ Principle: don't copy what Letterboxd already shows (film list, watchlist, lists
 ## Phase 3 — Data upgrades
 - [x] `fetch_rss.py`: merge recent diary entries from my public RSS feed (written, not yet tested against the live feed)
 - [x] `enrich_tmdb.py`: posters, genres, runtime, language, directors, countries, TMDB rating, where-to-watch (written, needs my TMDB key to test)
-- [ ] Get TMDB key, run both scripts, check results
-- [ ] Schedule RSS + TMDB refresh daily (GitHub Action) once deployed
+- [x] Get TMDB key, run both scripts, check results (685/689 matched)
+- [x] Daily RSS + TMDB refresh workflow written (`.github/workflows/daily-refresh.yml`) — needs the TMDB_API_KEY repo secret
 - [ ] Stats with TMDB: hours watched, genres over time, favourite directors, countries map
 
 ## Phase 4 — Deploy
-- [ ] Vercel (root directory `web`); build must copy `data/processed` (prebuild step)
+- [x] Data bundled via `web/src/data` (works on Vercel)
+- [ ] Vercel project (root directory `web`)
 - [ ] Link from eglantinedupuy-hub.github.io

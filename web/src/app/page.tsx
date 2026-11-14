@@ -4,14 +4,16 @@ import { ChallengeCard } from "@/components/ChallengeCard";
 import { FilmCard } from "@/components/FilmCard";
 import { ReviewCarousel } from "@/components/ReviewCarousel";
 import { StatCard } from "@/components/StatCard";
+import { Throwback } from "@/components/Throwback";
 import { config, letterboxdSearchUrl } from "@/config";
-import { getDiary, getReviews, getSummary } from "@/lib/data";
+import { getDiary, getFavourites, getReviews, getSummary, getTmdb } from "@/lib/data";
 import { dayOfYear, daySeed, daysInYear, todayISO, weekStart } from "@/lib/dates";
 import { monthLabel } from "@/lib/format";
 
 export default async function OverviewPage() {
   await connection(); // render on each visit so "this week / today" use the real current date
-  const [summary, diary, reviews] = await Promise.all([getSummary(), getDiary(), getReviews()]);
+  const [summary, diary, reviews, tmdb, favourites] = await Promise.all([getSummary(), getDiary(), getReviews(), getTmdb(), getFavourites()]);
+  const posterOf = (key: string) => tmdb[key]?.poster ?? null;
 
   const today = todayISO();
   const year = Number(today.slice(0, 4));
@@ -59,9 +61,9 @@ export default async function OverviewPage() {
 
       <section className="space-y-4">
         <h2 className="text-xl font-bold">All-time favourites</h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          {config.favourites.map((f) => (
-            <FilmCard key={f.name} name={f.name} year={f.year} url={f.url ?? letterboxdSearchUrl(f.name)} liked />
+        <div className="grid max-w-2xl grid-cols-4 gap-3">
+          {favourites.map((f) => (
+            <FilmCard key={f.name} name={f.name} year={f.year} url={f.url ?? letterboxdSearchUrl(f.name)} poster={posterOf(`favourite:${f.name}`)} liked />
           ))}
         </div>
       </section>
@@ -69,7 +71,7 @@ export default async function OverviewPage() {
       {reviews.length > 0 && (
         <section className="space-y-4">
           <h2 className="text-xl font-bold">From my diary</h2>
-          <ReviewCarousel reviews={reviews} startIndex={daySeed(today)} />
+          <ReviewCarousel reviews={reviews.map((r) => ({ ...r, poster: posterOf(r.url) }))} startIndex={daySeed(today)} />
         </section>
       )}
 
@@ -78,19 +80,12 @@ export default async function OverviewPage() {
         {throwbackYears.length === 0 ? (
           <p className="text-sm text-muted">Nothing logged in {monthName} in earlier years.</p>
         ) : (
-          throwbackYears.map((y) => {
-            const films = throwback.get(y)!;
-            return (
-              <div key={y} className="space-y-2">
-                <p className="text-sm text-muted">{y} · {films.length} film{films.length === 1 ? "" : "s"}</p>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  {films.map((d) => (
-                    <FilmCard key={`${d.date}-${d.url}`} {...d} />
-                  ))}
-                </div>
-              </div>
-            );
-          })
+          <Throwback
+            groups={throwbackYears.map((y) => ({
+              year: y,
+              films: throwback.get(y)!.map((d) => ({ ...d, poster: posterOf(d.url) })),
+            }))}
+          />
         )}
       </section>
 
@@ -99,9 +94,9 @@ export default async function OverviewPage() {
           <h2 className="text-xl font-bold">Recently watched</h2>
           <Link href="/pick" className="text-sm text-muted hover:text-foreground">What should I watch next? →</Link>
         </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-8">
           {recent.map((d) => (
-            <FilmCard key={`${d.date}-${d.url}`} {...d} />
+            <FilmCard key={`${d.date}-${d.url}`} {...d} poster={posterOf(d.url)} />
           ))}
         </div>
       </section>

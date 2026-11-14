@@ -1,22 +1,28 @@
-// Copies the pipeline's JSON summaries into web/public/data so the site can read them.
+// Copies the pipeline's JSON (data/processed/*.json + data/favourites.json) into web/src/data,
+// where the site imports it. Commit web/src/data: that's what Vercel builds from.
 //
-//   npm run sync-data   -> copies from ../data/processed
-//
-// Runs automatically before `npm run dev` (see "predev" in package.json).
-import { cpSync, existsSync, mkdirSync, readdirSync } from "node:fs";
+//   npm run sync-data        (also runs automatically before `npm run dev` and `npm run build`)
+import { copyFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 const webDir = path.resolve(import.meta.dirname, "..");
 const source = path.resolve(webDir, process.env.DATA_DIR ?? "../data/processed");
-const target = path.join(webDir, "public", "data");
+const favourites = path.resolve(webDir, "../data/favourites.json");
+const target = path.join(webDir, "src", "data");
+mkdirSync(target, { recursive: true });
 
-if (!existsSync(source)) {
-  console.error(`sync-data: source folder not found: ${source}`);
-  console.error("Run the pipeline first: python pipeline/process_letterboxd.py --input data/raw --out data/processed");
-  process.exit(1);
+if (existsSync(source)) {
+  const files = readdirSync(source).filter((f) => f.endsWith(".json"));
+  for (const f of files) copyFileSync(path.join(source, f), path.join(target, f));
+  if (existsSync(favourites)) copyFileSync(favourites, path.join(target, "favourites.json"));
+  console.log(`sync-data: copied ${files.length} file(s) from ${path.relative(webDir, source)} to src/data`);
+} else {
+  // e.g. on Vercel if only the web/ folder is available: use the committed copies in src/data
+  console.log(`sync-data: ${source} not found, using the committed files in src/data`);
 }
 
-mkdirSync(target, { recursive: true });
-const files = readdirSync(source).filter((f) => f.endsWith(".json"));
-for (const f of files) cpSync(path.join(source, f), path.join(target, f));
-console.log(`sync-data: copied ${files.length} file(s) from ${path.relative(webDir, source)} to public/data`);
+// Optional files: create empty placeholders so the site still builds without them
+const placeholders = { "reviews.json": "[]", "tmdb.json": "{}", "favourites.json": "[]" };
+for (const [name, empty] of Object.entries(placeholders)) {
+  if (!existsSync(path.join(target, name))) writeFileSync(path.join(target, name), empty);
+}

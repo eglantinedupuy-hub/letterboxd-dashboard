@@ -1,7 +1,18 @@
-// Server-side helpers that read the JSON summaries from public/data.
-// These run at build/request time on the server, never in the browser.
-import { readFile } from "node:fs/promises";
-import path from "node:path";
+// Typed access to the JSON summaries in src/data (copied there by `npm run sync-data`).
+// They are imported directly, so they're bundled into the build: works locally and on Vercel.
+import summaryJson from "@/data/summary.json";
+import monthlyJson from "@/data/monthly.json";
+import yearlyJson from "@/data/yearly.json";
+import weekdayJson from "@/data/weekday.json";
+import ratingsJson from "@/data/rating_distribution.json";
+import decadesJson from "@/data/release_decades.json";
+import filmsJson from "@/data/films.json";
+import watchlistJson from "@/data/watchlist.json";
+import listsJson from "@/data/lists.json";
+import diaryJson from "@/data/diary.json";
+import reviewsJson from "@/data/reviews.json";
+import tmdbJson from "@/data/tmdb.json";
+import favouritesJson from "@/data/favourites.json";
 
 export type Favourite = { name: string | null; year: number | null; url: string; rating: number | null };
 export type Summary = {
@@ -37,30 +48,24 @@ export type Film = {
 export type WatchlistItem = { name: string; year: number | null; url: string; added: string; days_waiting: number | null };
 export type FilmList = { name: string; created: string | null; url: string | null; description: string; films: { position: number; name: string; year: number | null; url: string }[] };
 
-export type DiaryEntry = { date: string; name: string; year: number | null; url: string; rating: number | null; rewatch: boolean; liked: boolean };
+export type DiaryEntry = { date: string; name: string; year: number | null; url: string; rating: number | null; rewatch: boolean; liked: boolean; tmdb_id?: number | null };
 export type Review = { name: string; year: number | null; url: string; rating: number | null; date: string; text: string };
 
-async function readJson<T>(name: string): Promise<T> {
-  const file = path.join(process.cwd(), "public", "data", `${name}.json`);
-  try {
-    return JSON.parse(await readFile(file, "utf-8")) as T;
-  } catch {
-    throw new Error(`Could not read public/data/${name}.json — run "npm run sync-data" first.`);
-  }
-}
+// `as unknown as T`: the JSON's inferred type is replaced by our hand-written types above.
+const load = <T,>(json: unknown) => async () => json as T;
 
-export const getSummary = () => readJson<Summary>("summary");
-export const getMonthly = () => readJson<MonthStat[]>("monthly");
-export const getYearly = () => readJson<YearStat[]>("yearly");
-export const getWeekday = () => readJson<{ day: string; films: number }[]>("weekday");
-export const getRatingDistribution = () => readJson<{ rating: number; films: number }[]>("rating_distribution");
-export const getReleaseDecades = () => readJson<{ decade: number; films: number; avg_rating: number | null }[]>("release_decades");
-export const getFilms = () => readJson<Film[]>("films");
-export const getWatchlist = () => readJson<WatchlistItem[]>("watchlist");
-export const getLists = () => readJson<FilmList[]>("lists");
-export const getDiary = () => readJson<DiaryEntry[]>("diary");
-/** Reviews only exist if the pipeline ran with --include-reviews; otherwise an empty list. */
-export const getReviews = () => readJson<Review[]>("reviews").catch(() => [] as Review[]);
+export const getSummary = load<Summary>(summaryJson);
+export const getMonthly = load<MonthStat[]>(monthlyJson);
+export const getYearly = load<YearStat[]>(yearlyJson);
+export const getWeekday = load<{ day: string; films: number }[]>(weekdayJson);
+export const getRatingDistribution = load<{ rating: number; films: number }[]>(ratingsJson);
+export const getReleaseDecades = load<{ decade: number; films: number; avg_rating: number | null }[]>(decadesJson);
+export const getFilms = load<Film[]>(filmsJson);
+export const getWatchlist = load<WatchlistItem[]>(watchlistJson);
+export const getLists = load<FilmList[]>(listsJson);
+export const getDiary = load<DiaryEntry[]>(diaryJson);
+/** Empty list unless the pipeline ran with --include-reviews. */
+export const getReviews = load<Review[]>(reviewsJson);
 
 export type Tmdb = {
   tmdb_id: number;
@@ -77,5 +82,9 @@ export type Tmdb = {
   keywords?: string[];
   watch: { link: string | null; stream: string[]; rent: string[]; buy: string[] };
 };
-/** TMDB details keyed by Letterboxd film URL. Empty until pipeline/enrich_tmdb.py has been run. */
-export const getTmdb = () => readJson<Record<string, Tmdb>>("tmdb").catch(() => ({}) as Record<string, Tmdb>);
+/** TMDB details keyed by Letterboxd film URL (or "favourite:<name>"). Empty until pipeline/enrich_tmdb.py has run. */
+export const getTmdb = load<Record<string, Tmdb>>(tmdbJson);
+
+export type FavouriteFilm = { name: string; year: number | null; url: string | null };
+/** My 4 profile favourites (edit data/favourites.json). */
+export const getFavourites = load<FavouriteFilm[]>(favouritesJson);

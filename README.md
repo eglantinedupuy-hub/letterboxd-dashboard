@@ -22,8 +22,19 @@ npm run dev
 ```
 Then open **http://127.0.0.1:3001** (port 3001, so it can run at the same time as the Spotify dashboard on 3000).
 
+## Deploy (Vercel)
+1. vercel.com → Add New → Project → import `letterboxd-dashboard` from GitHub.
+2. **Root Directory: `web`** (Framework: Next.js). No environment variables needed.
+3. Deploy. Every `git push` redeploys automatically.
+
+The site reads its data from `web/src/data/` (copied from `data/processed/` by `npm run sync-data`), so commit that folder.
+
+## Daily auto-update (GitHub Actions)
+`.github/workflows/daily-refresh.yml` runs `fetch_rss.py` + `enrich_tmdb.py` every day and pushes the new data.
+Add your TMDB key as a repository secret named `TMDB_API_KEY` (repo → Settings → Secrets and variables → Actions).
+
 ## Settings
-Challenge goal, favourite films and the "where to watch" region are in `web/src/config.ts`.
+Challenge goal, moods and the "where to watch" region are in `web/src/config.ts`. Favourite films are in `data/favourites.json`.
 
 ## Update with a fresh export
 Letterboxd → Settings → Data → Export your data. Unzip it into `data/raw/` (replace the old files), then run step 1 again.
